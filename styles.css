@@ -1,0 +1,58 @@
+:root{--bg:#000000;--panel:#0d0d0d;--muted:#bfbfbf;--text:#ffffff;--accent:#BC110C;--accent-2:#ffffff;--border:#1a1a1a}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
+.hidden{display:none!important}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:#000;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+.brand{display:flex;align-items:center;gap:12px}
+.logo-wrap{display:flex;align-items:center}
+.logo-img{width:120px;height:auto;display:block}
+.logo{width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#8a0b08);display:flex;align-items:center;justify-content:center;font-weight:800}
+.brand-text{display:flex;flex-direction:column;line-height:1}
+.brand-text strong{letter-spacing:.5px}
+.brand-text span{color:var(--muted);font-size:12px}
+.btn{background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer}
+.btn:hover{filter:brightness(1.05)}
+.btn.primary{background:var(--accent);border-color:#8a0b08}
+.btn.ghost{background:transparent;border-color:var(--border);color:var(--muted)}
+.btn.mini{padding:6px 10px;font-size:12px;border-radius:8px}
+.panel{max-width:1100px;margin:24px auto;padding:20px}
+.auth{display:flex;justify-content:center}
+.auth-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:22px;width:460px}
+.tabs{display:flex;gap:8px;margin-bottom:10px}
+.tab{flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:#0f0f0f;color:var(--muted);cursor:pointer}
+.tab.active{background:#1a1a1a;color:var(--text);border-color:#2a2a2a}
+.form{display:none;gap:10px;flex-direction:column}
+.form.visible{display:flex}
+label{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+input,textarea,select{background:#0b0b0b;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px}
+textarea{resize:vertical}
+.disclaimer{color:var(--muted);font-size:12px;margin-top:6px}
+.workspace .controls{background:var(--panel);border:1px solid var(--border);padding:16px;border-radius:16px}
+.control-group{margin-bottom:12px}
+.control-row{display:flex;gap:8px}
+.hint{color:var(--muted);margin-top:10px}
+.hint.error{color:var(--accent);font-weight:600}
+.results{margin-top:18px}
+.results-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.table-preview{display:grid;grid-template-columns:80px 1fr 180px;gap:6px;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px}
+.status{display:flex;align-items:center;gap:12px;margin-top:12px;background:transparent;border:0;border-radius:14px;padding:14px 16px;font-size:15px;position:relative}
+.status-logo{width:44px;height:auto;display:block;background:transparent}
+.status.error{color:var(--accent)}
+@keyframes shrinkTimer{from{width:100%}to{width:0%}}
+.status-timer{position:absolute;left:0;bottom:0;height:4px;background:var(--accent);border-radius:3px;width:100%;pointer-events:none}
+.table-row{display:contents}
+.table-cell{padding:10px 8px;border-bottom:1px solid var(--border);color:#e6e6e6}
+.table-head .table-cell{color:var(--text);font-weight:600}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px}
+.card{position:relative;aspect-ratio:1.6/1;border-radius:18px;border:1px solid var(--border);overflow:hidden;background:#0f131b}
+.card .background{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.12}
+.card .content{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px;padding:18px;text-align:center}
+.card .badge{font-size:54px;font-weight:800;letter-spacing:.5px;color:#ffffff}
+.card .price{font-size:26px;font-weight:700;color:#ffffff}
+.card .model{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.5);padding:6px 10px;border-radius:10px;font-size:12px;color:#d9e3f1}
+.card .actions{position:absolute;bottom:10px;right:10px;display:flex;gap:8px}
+.tag{display:inline-block;padding:6px 8px;border-radius:8px;background:#000;color:#fff;border:1px solid var(--border);font-size:12px}
+.model-wellington .background{background-image:url("./modelo_placas/wellington.png"),url("./modelo_placas/wellington.jpg")}
+.model-patricia .background{background-image:url("./modelo_placas/patricia.png"),url("./modelo_placas/patricia.jpg")}
+.fallback .background{opacity:.22;background:radial-gradient(200px 120px at 20% 30%,#BC110C33 0%,transparent 60%),linear-gradient(#111,#000)}

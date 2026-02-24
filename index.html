@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gerador de Plaquinhas • PW Leilões</title>
+    <link rel="icon" type="image/png" href="./logo/logo_one.png" />
+    <link rel="shortcut icon" type="image/png" href="./logo/logo_one.png" />
+    <link rel="apple-touch-icon" href="./logo/logo_one.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo-wrap">
+          <img id="pwLogo" class="logo-img hidden" alt="PW Leilões" />
+          <div class="logo">PW</div>
+        </div>
+        <div class="brand-text">
+          <span>Gerador de plaquinhas para leilão</span>
+        </div>
+      </div>
+      <div class="user-actions">
+        <button id="logoutBtn" class="btn ghost hidden">Sair</button>
+      </div>
+    </header>
+
+    <main id="app">
+      <section id="authView" class="panel auth">
+        <div class="auth-card">
+          <div class="tabs">
+            <button class="tab active" data-tab="login">Login</button>
+            <button class="tab" data-tab="register">Cadastro</button>
+          </div>
+          <form id="loginForm" class="form visible" autocomplete="on">
+            <label>
+              <span>E-mail</span>
+              <input type="email" name="email" required />
+            </label>
+            <label>
+              <span>Senha</span>
+              <input type="password" name="password" required minlength="4" />
+            </label>
+            <button class="btn primary" type="submit">Entrar</button>
+          </form>
+          <form id="registerForm" class="form" autocomplete="off">
+            <label>
+              <span>E-mail</span>
+              <input type="email" name="email" required />
+            </label>
+            <label>
+              <span>Senha</span>
+              <input type="password" name="password" required minlength="4" />
+            </label>
+            <button class="btn primary" type="submit">Cadastrar</button>
+          </form>
+          <p class="disclaimer">Protótipo local para uso interno. Não utiliza servidor.</p>
+        </div>
+      </section>
+
+      <section id="workspaceView" class="panel workspace hidden">
+        <div class="controls">
+          <div class="control-group">
+            <label for="modeloSelect">Modelo da plaquinha</label>
+            <select id="modeloSelect">
+              <option value="" selected disabled>Selecione</option>
+              <option value="wellington">Wellington Silva</option>
+              <option value="patricia">Patrícia G. de Andrade Sousa</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>Texto da tabela (cole aqui)</label>
+            <textarea id="textoInput" placeholder="Cole aqui a tabela do Word..." rows="10"></textarea>
+          </div>
+          <div class="control-row">
+            <button id="parseBtn" class="btn primary">Analisar texto</button>
+            <button id="clearBtn" class="btn ghost">Limpar</button>
+          </div>
+          <div id="parseInfo" class="hint"></div>
+        </div>
+
+        <div id="resultArea" class="results hidden">
+          <div class="results-header">
+            <h2>Itens identificados</h2>
+            <div>
+              <button id="generateBtn" class="btn primary" disabled>Gerar plaquinhas</button>
+            </div>
+          </div>
+          <div id="tablePreview" class="table-preview"></div>
+          <div id="generationStatus" class="status hidden">
+            <img src="./logo/logo_two.png" alt="PW Leilões" class="status-logo" onerror="this.style.display='none'">
+            <span id="generationStatusText"></span>
+            <div class="status-timer"></div>
+          </div>
+          <div id="cardsGrid" class="cards-grid"></div>
+          <div class="control-row" style="margin-top:12px">
+            <button id="downloadAllDocxBtn" class="btn hidden" disabled>Baixar tudo (DOCX)</button>
+            <button id="downloadAllPdfBtn" class="btn hidden" disabled>Baixar tudo (PDF)</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.43.0/build/docxtemplater.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/docx.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="./app.js" type="module"></script>
+  </body>
+  </html>
