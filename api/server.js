@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import sqlite3 from 'sqlite3';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import path from 'path';
@@ -11,6 +10,7 @@ import Docxtemplater from 'docxtemplater';
 import libre from 'libreoffice-convert';
 import fetch from 'node-fetch';
 import FormData from 'form-data';
+import pg from 'pg';
 import { spawnSync } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,6 +20,7 @@ const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change';
 const DB_PATH = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(__dirname, 'users.db');
 const ROOT_DIR = path.resolve(__dirname, '..');
+const PG_URL = process.env.DATABASE_URL || '';
 
 // Try to ensure LibreOffice (soffice) is discoverable on macOS by preprending common path
 (() => {
@@ -40,19 +41,73 @@ function hasLibreOffice() {
   }
 }
 
-sqlite3.verbose();
-const db = new sqlite3.Database(DB_PATH);
+let dbMode = 'sqlite';
+let db = null;
+let pool = null;
+let sqlite3 = null; // will be loaded dynamically only if needed
 
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )
-  `);
-});
+async function initDb() {
+  if (PG_URL) {
+    pool = new pg.Pool({ connectionString: PG_URL, ssl: { rejectUnauthorized: false } });
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    dbMode = 'pg';
+    return;
+  }
+  // Lazy-load sqlite3 only when Postgres is not configured (e.g., local dev)
+  const sqlite = await import('sqlite3');
+  sqlite3 = sqlite.default;
+  sqlite3.verbose();
+  db = new sqlite3.Database(DB_PATH);
+  await new Promise((resolve, reject) => {
+    db.run(
+      `CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`,
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+  dbMode = 'sqlite';
+}
+
+async function userGetByEmail(email) {
+  if (dbMode === 'pg') {
+    const r = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    return r.rows[0] || null;
+  }
+  return await new Promise((resolve, reject) => {
+    db.get('SELECT * FROM users WHERE email = ?', [email], (err, row) => {
+      if (err) return reject(err);
+      resolve(row || null);
+    });
+  });
+}
+
+async function userInsert(email, password_hash, created_at) {
+  if (dbMode === 'pg') {
+    await pool.query(
+      'INSERT INTO users (email, password_hash, created_at) VALUES ($1, $2, $3)',
+      [email, password_hash, created_at]
+    );
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    const stmt = db.prepare('INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)');
+    stmt.run(email, password_hash, created_at, (err) => {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
 
 const app = express();
 app.use(cors({
@@ -169,36 +224,36 @@ app.post('/api/generate/pdf', async (req, res) => {
   }
 });
 
-app.post('/api/register', (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'Dados inválidos' });
-  const normalized = String(email).trim().toLowerCase();
-  const hash = bcrypt.hashSync(password, 10);
-  const createdAt = new Date().toISOString();
-  const stmt = db.prepare('INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)');
-  stmt.run(normalized, hash, createdAt, (err) => {
-    if (err) {
-      if (err.message && err.message.includes('UNIQUE')) {
-        return res.status(409).json({ error: 'E-mail já cadastrado' });
-      }
-      return res.status(500).json({ error: 'Erro ao cadastrar' });
-    }
+app.post('/api/register', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'Dados inválidos' });
+    const normalized = String(email).trim().toLowerCase();
+    const exists = await userGetByEmail(normalized);
+    if (exists) return res.status(409).json({ error: 'E-mail já cadastrado' });
+    const hash = bcrypt.hashSync(password, 10);
+    const createdAt = new Date().toISOString();
+    await userInsert(normalized, hash, createdAt);
     return res.json({ ok: true });
-  });
+  } catch (err) {
+    return res.status(500).json({ error: 'Erro ao cadastrar' });
+  }
 });
 
-app.post('/api/login', (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'Dados inválidos' });
-  const normalized = String(email).trim().toLowerCase();
-  db.get('SELECT * FROM users WHERE email = ?', [normalized], (err, row) => {
-    if (err) return res.status(500).json({ error: 'Erro no servidor' });
+app.post('/api/login', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'Dados inválidos' });
+    const normalized = String(email).trim().toLowerCase();
+    const row = await userGetByEmail(normalized);
     if (!row) return res.status(404).json({ error: 'Usuário não encontrado' });
     const ok = bcrypt.compareSync(password, row.password_hash);
     if (!ok) return res.status(401).json({ error: 'Senha incorreta' });
     const token = jwt.sign({ sub: row.id, email: row.email }, JWT_SECRET, { expiresIn: '7d' });
     return res.json({ ok: true, token, email: row.email });
-  });
+  } catch (err) {
+    return res.status(500).json({ error: 'Erro no servidor' });
+  }
 });
 
 // Serve frontend estático do diretório raiz do projeto
@@ -207,6 +262,13 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(ROOT_DIR, 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`API listening on http://localhost:${PORT}`);
-});
+initDb()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`API listening on http://localhost:${PORT}`);
+    });
+  })
+  .catch((e) => {
+    console.error('DB init failed', e);
+    process.exit(1);
+  });
