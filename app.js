@@ -185,6 +185,56 @@ async function fetchApiFileWithProgress(apiPath, payload, onProgress) {
   return new Blob(chunks, { type });
 }
 
+async function streamApiFileToWriter(apiPath, payload, writable, onProgress) {
+  const ac = new AbortController();
+  state.downloadCtrl = ac;
+  const res = await fetch(`${API_BASE}${apiPath}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: ac.signal,
+  });
+  if (!res.ok) {
+    let msg = 'Falha na solicitação';
+    try {
+      const data = await res.json();
+      if (data && data.error) msg = data.error;
+    } catch {}
+    state.downloadCtrl = null;
+    throw new Error(msg);
+  }
+  const totalStr = res.headers.get('content-length');
+  const total = totalStr ? parseInt(totalStr, 10) : 0;
+  if (!res.body || !('getReader' in res.body)) {
+    const blob = await res.blob();
+    await writable.write(blob);
+    try { await writable.close(); } catch {}
+    state.downloadCtrl = null;
+    if (onProgress) onProgress(100);
+    return;
+  }
+  const reader = res.body.getReader();
+  let loaded = 0;
+  while (true) {
+    let step;
+    try {
+      step = await reader.read();
+    } catch (e) {
+      try { await writable.close(); } catch {}
+      state.downloadCtrl = null;
+      if (state.downloadCanceled) throw new Error('cancelado');
+      throw e;
+    }
+    const { done, value } = step;
+    if (done) break;
+    await writable.write(value);
+    loaded += value.byteLength;
+    if (onProgress && total > 0) onProgress((loaded / total) * 100);
+  }
+  try { await writable.close(); } catch {}
+  state.downloadCtrl = null;
+  if (onProgress && total === 0) onProgress(100);
+}
 function setSession(email) {
   state.user = email;
   localStorage.setItem('session-user', email);
@@ -462,12 +512,24 @@ async function onDownloadDocx(card) {
     const label = `Baixando DOCX do item ${item}`;
     setDownloadStatus(label);
     let indShown = false;
-    const blob = await fetchApiFileWithProgress('/api/generate/docx', { model, item, valor }, (p) => {
-      if (Number.isFinite(p)) updateDownloadProgress(p, label);
-      else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
-    });
-    updateDownloadProgress(100, label);
-  await saveBlob(blob, `${model}-item-${item}.docx`);
+    if (window.showSaveFilePicker) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: `${model}-item-${item}.docx`,
+        types: [{ description: 'DOCX', accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] } }]
+      });
+      const writable = await handle.createWritable();
+      await streamApiFileToWriter('/api/generate/docx', { model, item, valor }, writable, (p) => {
+        if (Number.isFinite(p)) updateDownloadProgress(p, label);
+        else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+      });
+    } else {
+      const blob = await fetchApiFileWithProgress('/api/generate/docx', { model, item, valor }, (p) => {
+        if (Number.isFinite(p)) updateDownloadProgress(p, label);
+        else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+      });
+      updateDownloadProgress(100, label);
+      await saveBlob(blob, `${model}-item-${item}.docx`);
+    }
     hideDownloadStatus();
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
@@ -493,12 +555,24 @@ async function onDownloadPdf(card) {
     const label = `Baixando PDF do item ${item}`;
     setDownloadStatus(label);
     let indShown = false;
-    const blob = await fetchApiFileWithProgress('/api/generate/pdf', { model, item, valor }, (p) => {
-      if (Number.isFinite(p)) updateDownloadProgress(p, label);
-      else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
-    });
-    updateDownloadProgress(100, label);
-    await saveBlob(blob, `${model}-item-${item}.pdf`);
+    if (window.showSaveFilePicker) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: `${model}-item-${item}.pdf`,
+        types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }]
+      });
+      const writable = await handle.createWritable();
+      await streamApiFileToWriter('/api/generate/pdf', { model, item, valor }, writable, (p) => {
+        if (Number.isFinite(p)) updateDownloadProgress(p, label);
+        else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+      });
+    } else {
+      const blob = await fetchApiFileWithProgress('/api/generate/pdf', { model, item, valor }, (p) => {
+        if (Number.isFinite(p)) updateDownloadProgress(p, label);
+        else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+      });
+      updateDownloadProgress(100, label);
+      await saveBlob(blob, `${model}-item-${item}.pdf`);
+    }
     hideDownloadStatus();
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
