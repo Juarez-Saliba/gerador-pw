@@ -54,6 +54,87 @@ function setGenerationStatus(text, isError) {
   }, 8000);
 }
 
+function setDownloadStatus(text) {
+  const banner = $('#downloadStatus');
+  const textEl = $('#downloadStatusText');
+  if (!banner || !textEl) return;
+  const base = text || 'Baixando…';
+  banner.dataset.label = base;
+  textEl.textContent = `${base} — 0%`;
+  $('#downloadProgressFill').style.width = '0%';
+  banner.classList.remove('progress-indeterminate');
+  show(banner);
+  try { banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch {}
+}
+
+function updateDownloadProgress(percent, label) {
+  const fill = $('#downloadProgressFill');
+  const banner = $('#downloadStatus');
+  const textEl = $('#downloadStatusText');
+  if (!fill) return;
+  const p = Math.max(0, Math.min(100, Math.round(percent)));
+  fill.style.width = `${p}%`;
+  if (banner && textEl) {
+    const base = label || banner.dataset.label || 'Baixando…';
+    textEl.textContent = `${base} — ${p}%`;
+  }
+}
+
+function setDownloadIndeterminate(text) {
+  const banner = $('#downloadStatus');
+  const textEl = $('#downloadStatusText');
+  if (!banner || !textEl) return;
+  textEl.textContent = text || 'Processando…';
+  banner.classList.add('progress-indeterminate');
+  show(banner);
+}
+
+function hideDownloadStatus(delayMs = 1200) {
+  const banner = $('#downloadStatus');
+  if (!banner) return;
+  setTimeout(() => { hide(banner); }, delayMs);
+}
+
+async function fetchApiFileWithProgress(apiPath, payload, onProgress) {
+  const res = await fetch(`${API_BASE}${apiPath}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let msg = 'Falha na solic pipeline';
+    try {
+      const data = await res.json();
+      if (data && data.error) msg = data.error;
+    } catch {}
+    throw new Error(msg);
+  }
+  const totalStr = res.headers.get('content-length');
+  const total = totalStr ? parseInt(totalStr, 10) : 0;
+  if (!res.body || !('getReader' in res.body)) {
+    const blob = await res.blob();
+    if (onProgress && total) onProgress(100);
+    return blob;
+  }
+  const reader = res.body.getReader();
+  const chunks = [];
+  let loaded = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.byteLength;
+    if (onProgress) {
+      if (total > 0) {
+        onProgress((loaded / total) * 100);
+      }
+    }
+  }
+  if (onProgress && total === 0) onProgress(100);
+  const type = res.headers.get('content-type') || 'application/octet-stream';
+  return new Blob(chunks, { type });
+}
+
 function setSession(email) {
   state.user = email;
   localStorage.setItem('session-user', email);
@@ -328,14 +409,23 @@ async function onDownloadDocx(card) {
     const item = card.dataset.item;
     const model = card.dataset.model;
     const valor = card.dataset.valor;
-    const blob = await fetchApiFile('/api/generate/docx', { model, item, valor });
+    const label = `Baixando DOCX do item ${item}`;
+    setDownloadStatus(label);
+    let indShown = false;
+    const blob = await fetchApiFileWithProgress('/api/generate/docx', { model, item, valor }, (p) => {
+      if (Number.isFinite(p)) updateDownloadProgress(p, label);
+      else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+    });
+    updateDownloadProgress(100, label);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = `${model}-item-${item}.docx`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    hideDownloadStatus();
   } catch (e) {
     alert('Erro ao gerar DOCX: ' + (e && e.message ? e.message : e));
+    hideDownloadStatus();
   }
 }
 
@@ -344,20 +434,33 @@ async function onDownloadPdf(card) {
     const item = card.dataset.item;
     const model = card.dataset.model;
     const valor = card.dataset.valor;
-    const blob = await fetchApiFile('/api/generate/pdf', { model, item, valor });
+    const label = `Baixando PDF do item ${item}`;
+    setDownloadStatus(label);
+    let indShown = false;
+    const blob = await fetchApiFileWithProgress('/api/generate/pdf', { model, item, valor }, (p) => {
+      if (Number.isFinite(p)) updateDownloadProgress(p, label);
+      else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+    });
+    updateDownloadProgress(100, label);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = `${model}-item-${item}.pdf`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    hideDownloadStatus();
   } catch (e) {
     alert('Erro ao gerar PDF: ' + (e && e.message ? e.message : e));
+    hideDownloadStatus();
   }
 }
 
 async function downloadAllDocxZip() {
   const zip = new JSZip();
   const cards = $$('.cards-grid .card');
+  const total = cards.length || 1;
+  const label = 'Gerando DOCX em lote';
+  setDownloadStatus(label);
+  let idx = 0;
   for (const card of cards) {
     const item = card.dataset.item;
     const model = card.dataset.model;
@@ -365,6 +468,8 @@ async function downloadAllDocxZip() {
     const blob = await fetchApiFile('/api/generate/docx', { model, item, valor });
     const buf = await blob.arrayBuffer();
     zip.file(`${model}-item-${item}.docx`, buf);
+    idx += 1;
+    updateDownloadProgress((idx / total) * 100, label);
   }
   const content = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(content);
@@ -372,11 +477,16 @@ async function downloadAllDocxZip() {
   a.href = url; a.download = 'plaquinhas-docx.zip';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  hideDownloadStatus();
 }
 
 async function downloadAllPdfZip() {
   const zip = new JSZip();
   const cards = $$('.cards-grid .card');
+  const total = cards.length || 1;
+  const label = 'Gerando PDF em lote';
+  setDownloadStatus(label);
+  let idx = 0;
   for (const card of cards) {
     const item = card.dataset.item;
     const model = card.dataset.model;
@@ -384,6 +494,8 @@ async function downloadAllPdfZip() {
     const blob = await fetchApiFile('/api/generate/pdf', { model, item, valor });
     const buf = await blob.arrayBuffer();
     zip.file(`${model}-item-${item}.pdf`, buf);
+    idx += 1;
+    updateDownloadProgress((idx / total) * 100, label);
   }
   const content = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(content);
@@ -391,6 +503,7 @@ async function downloadAllPdfZip() {
   a.href = url; a.download = 'plaquinhas-pdf.zip';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  hideDownloadStatus();
 }
 
 function bindWorkspace() {

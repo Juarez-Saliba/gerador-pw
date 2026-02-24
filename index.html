@@ -96,6 +96,15 @@
             <div class="status-timer"></div>
           </div>
           <div id="cardsGrid" class="cards-grid"></div>
+          <div id="downloadStatus" class="status hidden">
+            <img src="./logo/logo_two.png" alt="PW Leilões" class="status-logo" onerror="this.style.display='none'">
+            <div style="flex:1">
+              <span id="downloadStatusText">Baixando — 0%</span>
+              <div class="progress-track">
+                <div class="progress-fill" id="downloadProgressFill"></div>
+              </div>
+            </div>
+          </div>
           <div class="control-row" style="margin-top:12px">
             <button id="downloadAllDocxBtn" class="btn hidden" disabled>Baixar tudo (DOCX)</button>
             <button id="downloadAllPdfBtn" class="btn hidden" disabled>Baixar tudo (PDF)</button>
