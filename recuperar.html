@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recuperar senha • PW</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="panel auth">
+      <div class="auth-card">
+        <div class="tabs" style="justify-content:center">
+          <button class="tab active">Recuperar senha</button>
+        </div>
+        <form id="resetForm" class="form visible" autocomplete="off">
+          <label>
+            <span>E-mail</span>
+            <input type="email" name="email" required />
+          </label>
+          <label>
+            <span>Nova senha</span>
+            <input type="password" name="newPassword" required minlength="4" />
+          </label>
+          <button class="btn primary" type="submit">Salvar nova senha</button>
+          <div id="resetHint" class="hint"></div>
+        </form>
+      </div>
+    </main>
+    <script>
+      const API_BASE = '';
+      const $ = (q) => document.querySelector(q);
+      function ok(msg){ const h=$('#resetHint'); h.textContent=msg; h.classList.remove('error'); }
+      function err(msg){ const h=$('#resetHint'); h.textContent=msg; h.classList.add('error'); }
+      document.getElementById('resetForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = e.target.email.value.trim().toLowerCase();
+        const newPassword = e.target.newPassword.value;
+        try {
+          const res = await fetch(`${API_BASE}/api/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, newPassword })
+          });
+          const data = await res.json().catch(()=>({}));
+          if (!res.ok) throw new Error(data.error || 'Falha ao resetar');
+          ok('Senha atualizada com sucesso. Você já pode fechar esta aba.');
+          e.target.reset();
+        } catch (e2) {
+          err(e2.message || 'Erro ao resetar senha');
+        }
+      });
+    </script>
+  </body>
+  </html>
+

@@ -109,6 +109,19 @@ async function userInsert(email, password_hash, created_at) {
   });
 }
 
+async function userUpdatePassword(email, password_hash) {
+  if (dbMode === 'pg') {
+    await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [password_hash, email]);
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    const stmt = db.prepare('UPDATE users SET password_hash = ? WHERE email = ?');
+    stmt.run(password_hash, email, (err) => {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
 const app = express();
 app.use(cors({
   origin: (origin, cb) => {
@@ -256,6 +269,20 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+app.post('/api/reset-password', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body || {};
+    if (!email || !newPassword) return res.status(400).json({ error: 'Dados inválidos' });
+    const normalized = String(email).trim().toLowerCase();
+    const user = await userGetByEmail(normalized);
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+    const hash = bcrypt.hashSync(newPassword, 10);
+    await userUpdatePassword(normalized, hash);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: 'Erro ao resetar senha' });
+  }
+});
 // Serve frontend estático do diretório raiz do projeto
 app.use(express.static(ROOT_DIR, { extensions: ['html'] }));
 app.get('*', (req, res) => {
