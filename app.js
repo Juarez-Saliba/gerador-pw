@@ -131,6 +131,23 @@ async function saveBlob(blob, suggestedName) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function ensureSaveAsSupport() {
+  if (window.showSaveFilePicker) return Promise.resolve({ proceed: true });
+  return new Promise((resolve) => {
+    const m = $('#saveAsModal');
+    const ok = $('#saveAsProceed');
+    const close = $('#saveAsClose');
+    const cleanup = () => {
+      ok.onclick = null;
+      close.onclick = null;
+      hide(m);
+    };
+    ok.onclick = () => { cleanup(); resolve({ proceed: true }); };
+    close.onclick = () => { cleanup(); resolve({ proceed: false }); };
+    show(m);
+  });
+}
+
 async function fetchApiFileWithProgress(apiPath, payload, onProgress) {
   const ac = new AbortController();
   state.downloadCtrl = ac;
@@ -512,24 +529,20 @@ async function onDownloadDocx(card) {
     const label = `Baixando DOCX do item ${item}`;
     setDownloadStatus(label);
     let indShown = false;
-    if (window.showSaveFilePicker) {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: `${model}-item-${item}.docx`,
-        types: [{ description: 'DOCX', accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] } }]
-      });
-      const writable = await handle.createWritable();
-      await streamApiFileToWriter('/api/generate/docx', { model, item, valor }, writable, (p) => {
-        if (Number.isFinite(p)) updateDownloadProgress(p, label);
-        else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
-      });
-    } else {
-      const blob = await fetchApiFileWithProgress('/api/generate/docx', { model, item, valor }, (p) => {
-        if (Number.isFinite(p)) updateDownloadProgress(p, label);
-        else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
-      });
-      updateDownloadProgress(100, label);
-      await saveBlob(blob, `${model}-item-${item}.docx`);
+    if (!window.showSaveFilePicker) {
+      alert('Seu navegador não permite escolher a pasta. Use Chrome ou Edge no desktop para selecionar onde salvar.');
+      hideDownloadStatus(0);
+      return;
     }
+    const handle = await window.showSaveFilePicker({
+      suggestedName: `${model}-item-${item}.docx`,
+      types: [{ description: 'DOCX', accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] } }]
+    });
+    const writable = await handle.createWritable();
+    await streamApiFileToWriter('/api/generate/docx', { model, item, valor }, writable, (p) => {
+      if (Number.isFinite(p)) updateDownloadProgress(p, label);
+      else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+    });
     hideDownloadStatus();
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
@@ -555,24 +568,20 @@ async function onDownloadPdf(card) {
     const label = `Baixando PDF do item ${item}`;
     setDownloadStatus(label);
     let indShown = false;
-    if (window.showSaveFilePicker) {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: `${model}-item-${item}.pdf`,
-        types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }]
-      });
-      const writable = await handle.createWritable();
-      await streamApiFileToWriter('/api/generate/pdf', { model, item, valor }, writable, (p) => {
-        if (Number.isFinite(p)) updateDownloadProgress(p, label);
-        else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
-      });
-    } else {
-      const blob = await fetchApiFileWithProgress('/api/generate/pdf', { model, item, valor }, (p) => {
-        if (Number.isFinite(p)) updateDownloadProgress(p, label);
-        else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
-      });
-      updateDownloadProgress(100, label);
-      await saveBlob(blob, `${model}-item-${item}.pdf`);
+    if (!window.showSaveFilePicker) {
+      alert('Seu navegador não permite escolher a pasta. Use Chrome ou Edge no desktop para selecionar onde salvar.');
+      hideDownloadStatus(0);
+      return;
     }
+    const handle = await window.showSaveFilePicker({
+      suggestedName: `${model}-item-${item}.pdf`,
+      types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }]
+    });
+    const writable = await handle.createWritable();
+    await streamApiFileToWriter('/api/generate/pdf', { model, item, valor }, writable, (p) => {
+      if (Number.isFinite(p)) updateDownloadProgress(p, label);
+      else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+    });
     hideDownloadStatus();
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
@@ -592,6 +601,10 @@ async function onDownloadPdf(card) {
 
 async function downloadAllDocxZip() {
   try {
+    if (!window.showSaveFilePicker) {
+      alert('Seu navegador não permite escolher a pasta. Use Chrome ou Edge no desktop para selecionar onde salvar.');
+      return;
+    }
     const zip = new JSZip();
     const cards = $$('.cards-grid .card');
     const total = cards.length || 1;
@@ -611,7 +624,13 @@ async function downloadAllDocxZip() {
     }
     if (!state.downloadCanceled) {
       const content = await zip.generateAsync({ type: 'blob' });
-      await saveBlob(content, 'plaquinhas-docx.zip');
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'plaquinhas-docx.zip',
+        types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(content);
+      await writable.close();
     }
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
@@ -632,6 +651,10 @@ async function downloadAllDocxZip() {
 
 async function downloadAllPdfZip() {
   try {
+    if (!window.showSaveFilePicker) {
+      alert('Seu navegador não permite escolher a pasta. Use Chrome ou Edge no desktop para selecionar onde salvar.');
+      return;
+    }
     const zip = new JSZip();
     const cards = $$('.cards-grid .card');
     const total = cards.length || 1;
@@ -651,7 +674,13 @@ async function downloadAllPdfZip() {
     }
     if (!state.downloadCanceled) {
       const content = await zip.generateAsync({ type: 'blob' });
-      await saveBlob(content, 'plaquinhas-pdf.zip');
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'plaquinhas-pdf.zip',
+        types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(content);
+      await writable.close();
     }
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
