@@ -41,6 +41,21 @@ function hasLibreOffice() {
   }
 }
 
+async function hasGotenberg() {
+  const base = process.env.GOTENBERG_URL;
+  if (!base) return false;
+  try {
+    const url = `${base.replace(/\/+$/, '')}/health`;
+    const ac = new AbortController();
+    const to = setTimeout(() => ac.abort(), 2000);
+    const r = await fetch(url, { signal: ac.signal });
+    clearTimeout(to);
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 let dbMode = 'sqlite';
 let db = null;
 let pool = null;
@@ -135,8 +150,13 @@ app.use(cors({
 }));
 app.use(express.json());
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, ts: Date.now(), libreoffice: hasLibreOffice() });
+app.get('/api/health', async (_req, res) => {
+  res.json({
+    ok: true,
+    ts: Date.now(),
+    libreoffice: hasLibreOffice(),
+    gotenberg: await hasGotenberg()
+  });
 });
 
 function detectDelimiters(xml) {
@@ -226,7 +246,10 @@ app.post('/api/generate/pdf', async (req, res) => {
     // Fallback: LibreOffice local
     libre.convert(buf, '.pdf', undefined, (err, done) => {
       if (err) {
-        return res.status(500).json({ error: 'Falha ao converter para PDF. Configure GOTENBERG_URL ou instale o LibreOffice.' });
+        const hint = process.env.GOTENBERG_URL
+          ? 'Falha via Gotenberg e sem LibreOffice. Verifique GOTENBERG_URL e o /health do serviço Gotenberg.'
+          : 'Falha ao converter para PDF. Configure GOTENBERG_URL ou instale o LibreOffice.';
+        return res.status(500).json({ error: hint });
       }
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${model}-item-${item}.pdf"`);
