@@ -7,6 +7,20 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo-wrap">
+          <img id="pwLogo" class="logo-img hidden" alt="PW Leilões" />
+          <div class="logo">PW</div>
+        </div>
+        <div class="brand-text">
+          <span>Gerador de plaquinhas para leilão</span>
+        </div>
+      </div>
+      <div class="user-actions">
+        <button class="btn ghost hidden">Sair</button>
+      </div>
+    </header>
     <main class="panel auth">
       <div class="auth-card">
         <div class="tabs" style="justify-content:center">
@@ -22,15 +36,55 @@
             <input type="password" name="newPassword" required minlength="4" />
           </label>
           <button class="btn primary" type="submit">Salvar nova senha</button>
-          <div id="resetHint" class="hint"></div>
         </form>
+        <div id="resetStatus" class="status hidden">
+          <img src="./logo/logo_two.png" alt="PW Leilões" class="status-logo" onerror="this.style.display='none'">
+          <span id="resetStatusText"></span>
+          <div class="status-timer"></div>
+        </div>
       </div>
     </main>
     <script>
       const API_BASE = '';
       const $ = (q) => document.querySelector(q);
-      function ok(msg){ const h=$('#resetHint'); h.textContent=msg; h.classList.remove('error'); }
-      function err(msg){ const h=$('#resetHint'); h.textContent=msg; h.classList.add('error'); }
+      const show = (el) => el && el.classList.remove('hidden');
+      const hide = (el) => el && el.classList.add('hidden');
+      (async () => {
+        const el = $('#pwLogo');
+        if (!el) return;
+        const candidates = [
+          'logo/logo_two.png','LOGO/logo_two.png',
+          'logo/pw.png','logo/pw.jpg','logo/pw.svg',
+          'logo/logo.png','logo/logo.jpg','logo/logo.svg',
+          'LOGO/pw.png','LOGO/pw.jpg','LOGO/pw.svg',
+          'LOGO/logo.png','LOGO/logo.jpg','LOGO/logo.svg'
+        ];
+        for (const u of candidates) {
+          try {
+            const r = await fetch(u, { cache: 'no-store' });
+            if (r.ok) {
+              el.src = u;
+              el.classList.remove('hidden');
+              const fb = document.querySelector('.logo');
+              if (fb) fb.classList.add('hidden');
+              break;
+            }
+          } catch {}
+        }
+      })();
+      function setStatus(text, ms) {
+        const banner = $('#resetStatus');
+        const textEl = $('#resetStatusText');
+        textEl.textContent = text || '';
+        const bar = banner.querySelector('.status-timer');
+        if (bar) {
+          bar.style.animation = 'none';
+          bar.offsetHeight;
+          bar.style.animation = `shrinkTimer ${ms/1000}s linear forwards`;
+        }
+        show(banner);
+        setTimeout(() => { window.location.href = './index.html'; }, ms);
+      }
       document.getElementById('resetForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const email = e.target.email.value.trim().toLowerCase();
@@ -43,13 +97,16 @@
           });
           const data = await res.json().catch(()=>({}));
           if (!res.ok) throw new Error(data.error || 'Falha ao resetar');
-          ok('Senha atualizada com sucesso. Você já pode fechar esta aba.');
-          e.target.reset();
+          hide(e.target);
+          setStatus('Senha atualizada com sucesso', 5000);
         } catch (e2) {
-          err(e2.message || 'Erro ao resetar senha');
+          const banner = $('#resetStatus');
+          const textEl = $('#resetStatusText');
+          textEl.textContent = e2.message || 'Erro ao resetar senha';
+          banner.classList.add('error');
+          show(banner);
         }
       });
     </script>
   </body>
   </html>
-

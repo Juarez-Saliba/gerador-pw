@@ -22,6 +22,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui
 .tabs{display:flex;gap:8px;margin-bottom:10px}
 .tab{flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:#0f0f0f;color:var(--muted);cursor:pointer}
 .tab.active{background:#1a1a1a;color:var(--text);border-color:#2a2a2a}
+.auth-card .disclaimer{display:inline-block;margin-top:16px}
 .form{display:none;gap:10px;flex-direction:column}
 .form.visible{display:flex}
 label{display:flex;flex-direction:column;gap:6px;margin:8px 0}
