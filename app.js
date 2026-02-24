@@ -529,20 +529,37 @@ async function onDownloadDocx(card) {
     const label = `Baixando DOCX do item ${item}`;
     setDownloadStatus(label);
     let indShown = false;
-    if (!window.showSaveFilePicker) {
-      alert('Seu navegador não permite escolher a pasta. Use Chrome ou Edge no desktop para selecionar onde salvar.');
-      hideDownloadStatus(0);
-      return;
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: `${model}-item-${item}.docx`,
+          types: [{ description: 'DOCX', accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] } }]
+        });
+        const writable = await handle.createWritable();
+        await streamApiFileToWriter('/api/generate/docx', { model, item, valor }, writable, (p) => {
+          if (Number.isFinite(p)) updateDownloadProgress(p, label);
+          else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+        });
+      } catch (e) {
+        // usuário cancelou o picker → não faz fallback silencioso
+        if (String(e && e.name) === 'AbortError') { hideDownloadStatus(0); return; }
+        // erro inesperado → faz fallback para download padrão
+        const blob = await fetchApiFileWithProgress('/api/generate/docx', { model, item, valor }, (p) => {
+          if (Number.isFinite(p)) updateDownloadProgress(p, label);
+          else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+        });
+        updateDownloadProgress(100, label);
+        await saveBlob(blob, `${model}-item-${item}.docx`);
+      }
+    } else {
+      // navegador sem suporte → fallback para download padrão
+      const blob = await fetchApiFileWithProgress('/api/generate/docx', { model, item, valor }, (p) => {
+        if (Number.isFinite(p)) updateDownloadProgress(p, label);
+        else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+      });
+      updateDownloadProgress(100, label);
+      await saveBlob(blob, `${model}-item-${item}.docx`);
     }
-    const handle = await window.showSaveFilePicker({
-      suggestedName: `${model}-item-${item}.docx`,
-      types: [{ description: 'DOCX', accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] } }]
-    });
-    const writable = await handle.createWritable();
-    await streamApiFileToWriter('/api/generate/docx', { model, item, valor }, writable, (p) => {
-      if (Number.isFinite(p)) updateDownloadProgress(p, label);
-      else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
-    });
     hideDownloadStatus();
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
@@ -568,20 +585,34 @@ async function onDownloadPdf(card) {
     const label = `Baixando PDF do item ${item}`;
     setDownloadStatus(label);
     let indShown = false;
-    if (!window.showSaveFilePicker) {
-      alert('Seu navegador não permite escolher a pasta. Use Chrome ou Edge no desktop para selecionar onde salvar.');
-      hideDownloadStatus(0);
-      return;
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: `${model}-item-${item}.pdf`,
+          types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }]
+        });
+        const writable = await handle.createWritable();
+        await streamApiFileToWriter('/api/generate/pdf', { model, item, valor }, writable, (p) => {
+          if (Number.isFinite(p)) updateDownloadProgress(p, label);
+          else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+        });
+      } catch (e) {
+        if (String(e && e.name) === 'AbortError') { hideDownloadStatus(0); return; }
+        const blob = await fetchApiFileWithProgress('/api/generate/pdf', { model, item, valor }, (p) => {
+          if (Number.isFinite(p)) updateDownloadProgress(p, label);
+          else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+        });
+        updateDownloadProgress(100, label);
+        await saveBlob(blob, `${model}-item-${item}.pdf`);
+      }
+    } else {
+      const blob = await fetchApiFileWithProgress('/api/generate/pdf', { model, item, valor }, (p) => {
+        if (Number.isFinite(p)) updateDownloadProgress(p, label);
+        else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
+      });
+      updateDownloadProgress(100, label);
+      await saveBlob(blob, `${model}-item-${item}.pdf`);
     }
-    const handle = await window.showSaveFilePicker({
-      suggestedName: `${model}-item-${item}.pdf`,
-      types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }]
-    });
-    const writable = await handle.createWritable();
-    await streamApiFileToWriter('/api/generate/pdf', { model, item, valor }, writable, (p) => {
-      if (Number.isFinite(p)) updateDownloadProgress(p, label);
-      else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
-    });
     hideDownloadStatus();
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
@@ -601,10 +632,6 @@ async function onDownloadPdf(card) {
 
 async function downloadAllDocxZip() {
   try {
-    if (!window.showSaveFilePicker) {
-      alert('Seu navegador não permite escolher a pasta. Use Chrome ou Edge no desktop para selecionar onde salvar.');
-      return;
-    }
     const zip = new JSZip();
     const cards = $$('.cards-grid .card');
     const total = cards.length || 1;
@@ -624,13 +651,26 @@ async function downloadAllDocxZip() {
     }
     if (!state.downloadCanceled) {
       const content = await zip.generateAsync({ type: 'blob' });
-      const handle = await window.showSaveFilePicker({
-        suggestedName: 'plaquinhas-docx.zip',
-        types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
-      });
-      const writable = await handle.createWritable();
-      await writable.write(content);
-      await writable.close();
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: 'plaquinhas-docx.zip',
+            types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(content);
+          await writable.close();
+        } catch (e) {
+          if (String(e && e.name) !== 'AbortError') {
+            await saveBlob(content, 'plaquinhas-docx.zip');
+          } else {
+            hideDownloadStatus(0);
+            return;
+          }
+        }
+      } else {
+        await saveBlob(content, 'plaquinhas-docx.zip');
+      }
     }
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
@@ -651,10 +691,6 @@ async function downloadAllDocxZip() {
 
 async function downloadAllPdfZip() {
   try {
-    if (!window.showSaveFilePicker) {
-      alert('Seu navegador não permite escolher a pasta. Use Chrome ou Edge no desktop para selecionar onde salvar.');
-      return;
-    }
     const zip = new JSZip();
     const cards = $$('.cards-grid .card');
     const total = cards.length || 1;
@@ -674,13 +710,26 @@ async function downloadAllPdfZip() {
     }
     if (!state.downloadCanceled) {
       const content = await zip.generateAsync({ type: 'blob' });
-      const handle = await window.showSaveFilePicker({
-        suggestedName: 'plaquinhas-pdf.zip',
-        types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
-      });
-      const writable = await handle.createWritable();
-      await writable.write(content);
-      await writable.close();
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: 'plaquinhas-pdf.zip',
+            types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(content);
+          await writable.close();
+        } catch (e) {
+          if (String(e && e.name) !== 'AbortError') {
+            await saveBlob(content, 'plaquinhas-pdf.zip');
+          } else {
+            hideDownloadStatus(0);
+            return;
+          }
+        }
+      } else {
+        await saveBlob(content, 'plaquinhas-pdf.zip');
+      }
     }
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
