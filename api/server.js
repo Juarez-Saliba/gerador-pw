@@ -21,6 +21,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change';
 const DB_PATH = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(__dirname, 'users.db');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PG_URL = process.env.DATABASE_URL || '';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
 
 // Try to ensure LibreOffice (soffice) is discoverable on macOS by preprending common path
 (() => {
@@ -72,6 +73,18 @@ async function initDb() {
         created_at TEXT NOT NULL
       )
     `);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS login_entries (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        email TEXT,
+        first_name TEXT,
+        last_name TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
     dbMode = 'pg';
     return;
   }
@@ -86,6 +99,25 @@ async function initDb() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`,
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+  await new Promise((resolve) => {
+    db.run(`ALTER TABLE users ADD COLUMN first_name TEXT`, () => resolve());
+  });
+  await new Promise((resolve) => {
+    db.run(`ALTER TABLE users ADD COLUMN last_name TEXT`, () => resolve());
+  });
+  await new Promise((resolve, reject) => {
+    db.run(
+      `CREATE TABLE IF NOT EXISTS login_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        email TEXT,
+        first_name TEXT,
+        last_name TEXT,
         created_at TEXT NOT NULL
       )`,
       (err) => (err ? reject(err) : resolve())
@@ -107,17 +139,17 @@ async function userGetByEmail(email) {
   });
 }
 
-async function userInsert(email, password_hash, created_at) {
+async function userInsert(email, password_hash, created_at, first_name, last_name) {
   if (dbMode === 'pg') {
     await pool.query(
-      'INSERT INTO users (email, password_hash, created_at) VALUES ($1, $2, $3)',
-      [email, password_hash, created_at]
+      'INSERT INTO users (email, password_hash, created_at, first_name, last_name) VALUES ($1, $2, $3, $4, $5)',
+      [email, password_hash, created_at, first_name || null, last_name || null]
     );
     return;
   }
   await new Promise((resolve, reject) => {
-    const stmt = db.prepare('INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)');
-    stmt.run(email, password_hash, created_at, (err) => {
+    const stmt = db.prepare('INSERT INTO users (email, password_hash, created_at, first_name, last_name) VALUES (?, ?, ?, ?, ?)');
+    stmt.run(email, password_hash, created_at, first_name || null, last_name || null, (err) => {
       if (err) return reject(err);
       resolve();
     });
@@ -158,6 +190,43 @@ app.get('/api/health', async (_req, res) => {
     gotenberg: await hasGotenberg()
   });
 });
+
+function requireAdmin(req, res, next) {
+  try {
+    const h = req.headers.authorization || '';
+    const m = h.match(/^Bearer\s+(.+)$/i);
+    if (!m) return res.status(401).json({ error: 'Unauthorized' });
+    const payload = jwt.verify(m[1], JWT_SECRET);
+    if (!ADMIN_EMAIL || payload.email !== ADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+    req.user = payload;
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+}
+
+async function logLogin(user) {
+  const createdAt = new Date().toISOString();
+  if (dbMode === 'pg') {
+    await pool.query(
+      'INSERT INTO login_entries (user_id, email, first_name, last_name, created_at) VALUES ($1, $2, $3, $4, $5)',
+      [user.id, user.email, user.first_name || null, user.last_name || null, createdAt]
+    );
+    await pool.query(`DELETE FROM login_entries WHERE created_at < $1`, [new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString()]);
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    const stmt = db.prepare('INSERT INTO login_entries (user_id, email, first_name, last_name, created_at) VALUES (?, ?, ?, ?, ?)');
+    stmt.run(user.id, user.email, user.first_name || null, user.last_name || null, createdAt, (err) => {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+  await new Promise((resolve) => {
+    const cutoff = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString();
+    db.run('DELETE FROM login_entries WHERE created_at < ?', [cutoff], () => resolve());
+  });
+}
 
 function detectDelimiters(xml) {
   const hasCurly = /(\{ITEM\})|(\{VALOR\})/i.test(xml);
@@ -262,14 +331,14 @@ app.post('/api/generate/pdf', async (req, res) => {
 
 app.post('/api/register', async (req, res) => {
   try {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: 'Dados inválidos' });
+    const { firstName, lastName, email, password } = req.body || {};
+    if (!firstName || !lastName || !email || !password) return res.status(400).json({ error: 'Dados inválidos' });
     const normalized = String(email).trim().toLowerCase();
     const exists = await userGetByEmail(normalized);
     if (exists) return res.status(409).json({ error: 'E-mail já cadastrado' });
     const hash = bcrypt.hashSync(password, 10);
     const createdAt = new Date().toISOString();
-    await userInsert(normalized, hash, createdAt);
+    await userInsert(normalized, hash, createdAt, String(firstName).trim(), String(lastName).trim());
     return res.json({ ok: true });
   } catch (err) {
     return res.status(500).json({ error: 'Erro ao cadastrar' });
@@ -286,12 +355,31 @@ app.post('/api/login', async (req, res) => {
     const ok = bcrypt.compareSync(password, row.password_hash);
     if (!ok) return res.status(401).json({ error: 'Senha incorreta' });
     const token = jwt.sign({ sub: row.id, email: row.email }, JWT_SECRET, { expiresIn: '7d' });
+    await logLogin({ id: row.id, email: row.email, first_name: row.first_name, last_name: row.last_name });
     return res.json({ ok: true, token, email: row.email });
   } catch (err) {
     return res.status(500).json({ error: 'Erro no servidor' });
   }
 });
 
+app.get('/api/admin/logins', requireAdmin, async (req, res) => {
+  try {
+    const cutoff = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString();
+    if (dbMode === 'pg') {
+      const r = await pool.query('SELECT * FROM login_entries WHERE created_at >= $1 ORDER BY created_at DESC', [cutoff]);
+      return res.json({ ok: true, entries: r.rows });
+    }
+    const entries = await new Promise((resolve, reject) => {
+      db.all('SELECT * FROM login_entries WHERE created_at >= ? ORDER BY created_at DESC', [cutoff], (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
+    return res.json({ ok: true, entries });
+  } catch {
+    return res.status(500).json({ error: 'Erro ao listar' });
+  }
+});
 app.post('/api/reset-password', async (req, res) => {
   try {
     const { email, newPassword } = req.body || {};
@@ -317,6 +405,14 @@ initDb()
     app.listen(PORT, () => {
       console.log(`API listening on http://localhost:${PORT}`);
     });
+    (async () => {
+      try {
+        if (dbMode === 'pg' && pool) {
+          await pool.query('SELECT 1');
+        }
+        await hasGotenberg();
+      } catch {}
+    })();
   })
   .catch((e) => {
     console.error('DB init failed', e);
