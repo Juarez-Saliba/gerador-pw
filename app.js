@@ -621,40 +621,6 @@ async function downloadAllDocxZip() {
   try {
     const cards = $$('.cards-grid .card');
     const total = cards.length || 1;
-    if (window.showDirectoryPicker) {
-      const dir = await window.showDirectoryPicker({ id: 'plaquinhas-docx', mode: 'readwrite' });
-      const label = 'Salvando DOCX na pasta escolhida';
-      setDownloadStatus(label);
-      let idx = 0;
-      for (const card of cards) {
-        if (state.downloadCanceled) break;
-        const item = card.dataset.item;
-        const model = card.dataset.model;
-        const valor = card.dataset.valor;
-        const blob = await fetchApiFileWithProgress('/api/generate/docx', { model, item, valor });
-        const handle = await dir.getFileHandle(`${model}-item-${item}.docx`, { create: true });
-        const writable = await handle.createWritable();
-        await writable.write(await blob.arrayBuffer());
-        await writable.close();
-        idx += 1;
-        updateDownloadProgress((idx / total) * 100, label);
-      }
-      hideDownloadStatus();
-      return;
-    }
-    let zipHandle = null;
-    let writable = null;
-    if (window.showSaveFilePicker) {
-      try {
-        zipHandle = await window.showSaveFilePicker({
-          suggestedName: 'plaquinhas-docx.zip',
-          types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
-        });
-        writable = await zipHandle.createWritable();
-      } catch (e) {
-        if (String(e && e.name) === 'AbortError') { hideDownloadStatus(0); return; }
-      }
-    }
     const zip = new JSZip();
     const label = 'Gerando DOCX em lote';
     setDownloadStatus(label);
@@ -672,9 +638,24 @@ async function downloadAllDocxZip() {
     }
     if (!state.downloadCanceled) {
       const content = await zip.generateAsync({ type: 'blob' });
-      if (writable) {
-        await writable.write(content);
-        await writable.close();
+      // Após 100%, perguntar onde salvar (arquivo ZIP)
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: 'plaquinhas-docx.zip',
+            types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(content);
+          await writable.close();
+        } catch (e) {
+          if (String(e && e.name) !== 'AbortError') {
+            await saveBlob(content, 'plaquinhas-docx.zip');
+          } else {
+            hideDownloadStatus(0);
+            return;
+          }
+        }
       } else {
         await saveBlob(content, 'plaquinhas-docx.zip');
       }
@@ -700,40 +681,6 @@ async function downloadAllPdfZip() {
   try {
     const cards = $$('.cards-grid .card');
     const total = cards.length || 1;
-    if (window.showDirectoryPicker) {
-      const dir = await window.showDirectoryPicker({ id: 'plaquinhas-pdf', mode: 'readwrite' });
-      const label = 'Salvando PDF na pasta escolhida';
-      setDownloadStatus(label);
-      let idx = 0;
-      for (const card of cards) {
-        if (state.downloadCanceled) break;
-        const item = card.dataset.item;
-        const model = card.dataset.model;
-        const valor = card.dataset.valor;
-        const blob = await fetchApiFileWithProgress('/api/generate/pdf', { model, item, valor });
-        const handle = await dir.getFileHandle(`${model}-item-${item}.pdf`, { create: true });
-        const writable = await handle.createWritable();
-        await writable.write(await blob.arrayBuffer());
-        await writable.close();
-        idx += 1;
-        updateDownloadProgress((idx / total) * 100, label);
-      }
-      hideDownloadStatus();
-      return;
-    }
-    let zipHandle = null;
-    let writable = null;
-    if (window.showSaveFilePicker) {
-      try {
-        zipHandle = await window.showSaveFilePicker({
-          suggestedName: 'plaquinhas-pdf.zip',
-          types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
-        });
-        writable = await zipHandle.createWritable();
-      } catch (e) {
-        if (String(e && e.name) === 'AbortError') { hideDownloadStatus(0); return; }
-      }
-    }
     const zip = new JSZip();
     const label = 'Gerando PDF em lote';
     setDownloadStatus(label);
@@ -751,9 +698,23 @@ async function downloadAllPdfZip() {
     }
     if (!state.downloadCanceled) {
       const content = await zip.generateAsync({ type: 'blob' });
-      if (writable) {
-        await writable.write(content);
-        await writable.close();
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: 'plaquinhas-pdf.zip',
+            types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(content);
+          await writable.close();
+        } catch (e) {
+          if (String(e && e.name) !== 'AbortError') {
+            await saveBlob(content, 'plaquinhas-pdf.zip');
+          } else {
+            hideDownloadStatus(0);
+            return;
+          }
+        }
       } else {
         await saveBlob(content, 'plaquinhas-pdf.zip');
       }
