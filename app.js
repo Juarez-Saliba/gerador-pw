@@ -108,6 +108,54 @@ function hideDownloadStatus(delayMs = 1200) {
   setTimeout(() => { hide(banner); }, delayMs);
 }
 
+function acceptForName(name) {
+  const n = String(name).toLowerCase();
+  if (n.endsWith('.pdf')) return { 'application/pdf': ['.pdf'] };
+  if (n.endsWith('.docx')) return { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] };
+  if (n.endsWith('.zip')) return { 'application/zip': ['.zip'] };
+  return { 'application/octet-stream': ['.bin'] };
+}
+
+function promptSaveReady(blob, suggestedName) {
+  return new Promise((resolve) => {
+    const btn = $('#downloadSaveNow');
+    const textEl = $('#downloadStatusText');
+    if (!btn) { saveBlob(blob, suggestedName).then(resolve); return; }
+    btn.classList.remove('hidden');
+    if (textEl) textEl.textContent = 'Pronto para salvar — 100%';
+    const onClick = async () => {
+      btn.removeEventListener('click', onClick);
+      try {
+        if (window.showSaveFilePicker) {
+          const handle = await window.showSaveFilePicker({
+            suggestedName,
+            types: [{ description: 'Arquivo', accept: acceptForName(suggestedName) }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+        } else {
+          await saveBlob(blob, suggestedName);
+        }
+        btn.classList.add('hidden');
+        hideDownloadStatus();
+        resolve();
+      } catch (e) {
+        if (String(e && e.name) === 'AbortError') {
+          // usuário fechou o seletor: mantém o botão visível para tentar novamente
+          btn.addEventListener('click', onClick, { once: true });
+        } else {
+          await saveBlob(blob, suggestedName);
+          btn.classList.add('hidden');
+          hideDownloadStatus();
+          resolve();
+        }
+      }
+    };
+    btn.addEventListener('click', onClick, { once: true });
+  });
+}
+
 async function saveBlob(blob, suggestedName) {
   try {
     if (window.showSaveFilePicker) {
@@ -537,23 +585,8 @@ async function onDownloadDocx(card) {
       else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
     });
     updateDownloadProgress(100, label);
-    // 2) Após 100%, oferece para escolher onde salvar
-    if (window.showSaveFilePicker) {
-      try {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: `${model}-item-${item}.docx`,
-          types: [{ description: 'DOCX', accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] } }]
-        });
-        const writable = await handle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-      } catch (e) {
-        if (String(e && e.name) === 'AbortError') { hideDownloadStatus(0); return; }
-        await saveBlob(blob, `${model}-item-${item}.docx`);
-      }
-    } else {
-      await saveBlob(blob, `${model}-item-${item}.docx`);
-    }
+    // 2) Após 100%, botão “Salvar arquivo” para escolher local
+    await promptSaveReady(blob, `${model}-item-${item}.docx`);
     hideDownloadStatus();
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
@@ -584,22 +617,7 @@ async function onDownloadPdf(card) {
       else if (!indShown) { setDownloadIndeterminate(label); indShown = true; }
     });
     updateDownloadProgress(100, label);
-    if (window.showSaveFilePicker) {
-      try {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: `${model}-item-${item}.pdf`,
-          types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }]
-        });
-        const writable = await handle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-      } catch (e) {
-        if (String(e && e.name) === 'AbortError') { hideDownloadStatus(0); return; }
-        await saveBlob(blob, `${model}-item-${item}.pdf`);
-      }
-    } else {
-      await saveBlob(blob, `${model}-item-${item}.pdf`);
-    }
+    await promptSaveReady(blob, `${model}-item-${item}.pdf`);
     hideDownloadStatus();
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
@@ -638,27 +656,7 @@ async function downloadAllDocxZip() {
     }
     if (!state.downloadCanceled) {
       const content = await zip.generateAsync({ type: 'blob' });
-      // Após 100%, perguntar onde salvar (arquivo ZIP)
-      if (window.showSaveFilePicker) {
-        try {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: 'plaquinhas-docx.zip',
-            types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
-          });
-          const writable = await handle.createWritable();
-          await writable.write(content);
-          await writable.close();
-        } catch (e) {
-          if (String(e && e.name) !== 'AbortError') {
-            await saveBlob(content, 'plaquinhas-docx.zip');
-          } else {
-            hideDownloadStatus(0);
-            return;
-          }
-        }
-      } else {
-        await saveBlob(content, 'plaquinhas-docx.zip');
-      }
+    await promptSaveReady(content, 'plaquinhas-docx.zip');
     }
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
@@ -698,26 +696,7 @@ async function downloadAllPdfZip() {
     }
     if (!state.downloadCanceled) {
       const content = await zip.generateAsync({ type: 'blob' });
-      if (window.showSaveFilePicker) {
-        try {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: 'plaquinhas-pdf.zip',
-            types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
-          });
-          const writable = await handle.createWritable();
-          await writable.write(content);
-          await writable.close();
-        } catch (e) {
-          if (String(e && e.name) !== 'AbortError') {
-            await saveBlob(content, 'plaquinhas-pdf.zip');
-          } else {
-            hideDownloadStatus(0);
-            return;
-          }
-        }
-      } else {
-        await saveBlob(content, 'plaquinhas-pdf.zip');
-      }
+    await promptSaveReady(content, 'plaquinhas-pdf.zip');
     }
   } catch (e) {
     if (String(e && e.message).toLowerCase().includes('cancelado') || state.downloadCanceled) {
