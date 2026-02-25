@@ -205,6 +205,18 @@ function requireAdmin(req, res, next) {
   }
 }
 
+function formatLocalBR(iso) {
+  try {
+    return new Date(iso).toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  } catch {
+    return iso;
+  }
+}
+
 async function logLogin(user) {
   const createdAt = new Date().toISOString();
   if (dbMode === 'pg') {
@@ -367,17 +379,43 @@ app.get('/api/admin/logins', requireAdmin, async (req, res) => {
     const cutoff = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString();
     if (dbMode === 'pg') {
       const r = await pool.query('SELECT * FROM login_entries WHERE created_at >= $1 ORDER BY created_at DESC', [cutoff]);
-      return res.json({ ok: true, entries: r.rows });
+      const entries = (r.rows || []).map(row => ({ ...row, created_at_local_br: formatLocalBR(row.created_at) }));
+      return res.json({ ok: true, entries });
     }
-    const entries = await new Promise((resolve, reject) => {
+    const rows = await new Promise((resolve, reject) => {
       db.all('SELECT * FROM login_entries WHERE created_at >= ? ORDER BY created_at DESC', [cutoff], (err, rows) => {
         if (err) return reject(err);
         resolve(rows || []);
       });
     });
+    const entries = rows.map(row => ({ ...row, created_at_local_br: formatLocalBR(row.created_at) }));
     return res.json({ ok: true, entries });
   } catch {
     return res.status(500).json({ error: 'Erro ao listar' });
+  }
+});
+
+app.post('/api/admin/reset-users', requireAdmin, async (req, res) => {
+  try {
+    if (dbMode === 'pg') {
+      const c1 = await pool.query('SELECT COUNT(*)::int AS c FROM login_entries');
+      const c2 = await pool.query('SELECT COUNT(*)::int AS c FROM users');
+      await pool.query('TRUNCATE login_entries RESTART IDENTITY');
+      await pool.query('TRUNCATE users RESTART IDENTITY CASCADE');
+      return res.json({ ok: true, deleted: { login_entries: c1.rows[0].c, users: c2.rows[0].c } });
+    }
+    const r1 = await new Promise((resolve, reject) => {
+      db.get('SELECT COUNT(*) AS c FROM login_entries', [], (err, row) => err ? reject(err) : resolve(row.c || 0));
+    });
+    const r2 = await new Promise((resolve, reject) => {
+      db.get('SELECT COUNT(*) AS c FROM users', [], (err, row) => err ? reject(err) : resolve(row.c || 0));
+    });
+    await new Promise((resolve, reject) => db.run('DELETE FROM login_entries', (e) => e ? reject(e) : resolve()));
+    await new Promise((resolve, reject) => db.run('DELETE FROM users', (e) => e ? reject(e) : resolve()));
+    await new Promise((resolve) => db.run("DELETE FROM sqlite_sequence WHERE name IN ('users','login_entries')", () => resolve()));
+    return res.json({ ok: true, deleted: { login_entries: r1, users: r2 } });
+  } catch (e) {
+    return res.status(500).json({ error: 'Erro ao resetar usuários' });
   }
 });
 app.post('/api/reset-password', async (req, res) => {
