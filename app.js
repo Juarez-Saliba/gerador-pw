@@ -632,9 +632,45 @@ async function onDownloadPdf(card) {
 
 async function downloadAllDocxZip() {
   try {
-    const zip = new JSZip();
     const cards = $$('.cards-grid .card');
     const total = cards.length || 1;
+    // Primeira tentativa: escolher uma pasta e salvar cada arquivo nela (melhor UX)
+    if (window.showDirectoryPicker) {
+      const dir = await window.showDirectoryPicker({ id: 'plaquinhas-docx', mode: 'readwrite' });
+      const label = 'Salvando DOCX na pasta escolhida';
+      setDownloadStatus(label);
+      let idx = 0;
+      for (const card of cards) {
+        if (state.downloadCanceled) break;
+        const item = card.dataset.item;
+        const model = card.dataset.model;
+        const valor = card.dataset.valor;
+        const blob = await fetchApiFileWithProgress('/api/generate/docx', { model, item, valor });
+        const handle = await dir.getFileHandle(`${model}-item-${item}.docx`, { create: true });
+        const writable = await handle.createWritable();
+        await writable.write(await blob.arrayBuffer());
+        await writable.close();
+        idx += 1;
+        updateDownloadProgress((idx / total) * 100, label);
+      }
+      hideDownloadStatus();
+      return;
+    }
+    // Segunda tentativa: abrir o "Salvar como..." para um ZIP logo no início (mantém gesto do usuário)
+    let zipHandle = null;
+    let zipWritable = null;
+    if (window.showSaveFilePicker) {
+      try {
+        zipHandle = await window.showSaveFilePicker({
+          suggestedName: 'plaquinhas-docx.zip',
+          types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
+        });
+      } catch (e) {
+        if (String(e && e.name) === 'AbortError') { hideDownloadStatus(0); return; }
+        // se falhar inesperadamente, cai para o fallback de download padrão no final
+      }
+    }
+    const zip = new JSZip();
     const label = 'Gerando DOCX em lote';
     setDownloadStatus(label);
     let idx = 0;
@@ -651,23 +687,10 @@ async function downloadAllDocxZip() {
     }
     if (!state.downloadCanceled) {
       const content = await zip.generateAsync({ type: 'blob' });
-      if (window.showSaveFilePicker) {
-        try {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: 'plaquinhas-docx.zip',
-            types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
-          });
-          const writable = await handle.createWritable();
-          await writable.write(content);
-          await writable.close();
-        } catch (e) {
-          if (String(e && e.name) !== 'AbortError') {
-            await saveBlob(content, 'plaquinhas-docx.zip');
-          } else {
-            hideDownloadStatus(0);
-            return;
-          }
-        }
+      if (zipHandle) {
+        zipWritable = await zipHandle.createWritable();
+        await zipWritable.write(content);
+        await zipWritable.close();
       } else {
         await saveBlob(content, 'plaquinhas-docx.zip');
       }
@@ -691,9 +714,43 @@ async function downloadAllDocxZip() {
 
 async function downloadAllPdfZip() {
   try {
-    const zip = new JSZip();
     const cards = $$('.cards-grid .card');
     const total = cards.length || 1;
+    // Preferir salvar cada PDF em uma pasta escolhida pelo usuário
+    if (window.showDirectoryPicker) {
+      const dir = await window.showDirectoryPicker({ id: 'plaquinhas-pdf', mode: 'readwrite' });
+      const label = 'Salvando PDF na pasta escolhida';
+      setDownloadStatus(label);
+      let idx = 0;
+      for (const card of cards) {
+        if (state.downloadCanceled) break;
+        const item = card.dataset.item;
+        const model = card.dataset.model;
+        const valor = card.dataset.valor;
+        const blob = await fetchApiFileWithProgress('/api/generate/pdf', { model, item, valor });
+        const handle = await dir.getFileHandle(`${model}-item-${item}.pdf`, { create: true });
+        const writable = await handle.createWritable();
+        await writable.write(await blob.arrayBuffer());
+        await writable.close();
+        idx += 1;
+        updateDownloadProgress((idx / total) * 100, label);
+      }
+      hideDownloadStatus();
+      return;
+    }
+    // Caso não tenha diretório, pedir o arquivo ZIP logo no início
+    let zipHandle = null;
+    if (window.showSaveFilePicker) {
+      try {
+        zipHandle = await window.showSaveFilePicker({
+          suggestedName: 'plaquinhas-pdf.zip',
+          types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
+        });
+      } catch (e) {
+        if (String(e && e.name) === 'AbortError') { hideDownloadStatus(0); return; }
+      }
+    }
+    const zip = new JSZip();
     const label = 'Gerando PDF em lote';
     setDownloadStatus(label);
     let idx = 0;
@@ -710,23 +767,10 @@ async function downloadAllPdfZip() {
     }
     if (!state.downloadCanceled) {
       const content = await zip.generateAsync({ type: 'blob' });
-      if (window.showSaveFilePicker) {
-        try {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: 'plaquinhas-pdf.zip',
-            types: [{ description: 'ZIP', accept: { 'application/zip': ['.zip'] } }]
-          });
-          const writable = await handle.createWritable();
-          await writable.write(content);
-          await writable.close();
-        } catch (e) {
-          if (String(e && e.name) !== 'AbortError') {
-            await saveBlob(content, 'plaquinhas-pdf.zip');
-          } else {
-            hideDownloadStatus(0);
-            return;
-          }
-        }
+      if (zipHandle) {
+        const writable = await zipHandle.createWritable();
+        await writable.write(content);
+        await writable.close();
       } else {
         await saveBlob(content, 'plaquinhas-pdf.zip');
       }
