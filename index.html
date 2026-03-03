@@ -79,13 +79,43 @@
               <option value="patricia">Patrícia G. de Andrade Sousa</option>
             </select>
           </div>
-          <div class="control-group">
-            <label>Texto da tabela (cole aqui)</label>
-            <textarea id="textoInput" placeholder="Cole aqui a tabela do Word..." rows="10"></textarea>
+          <div class="tabs" id="inputModeTabs" style="margin-bottom:4px">
+            <button class="tab active" data-mode="edital">Ler edital (IA)</button>
+            <button class="tab" data-mode="manual">Digitar tabela</button>
           </div>
-          <div class="control-row">
-            <button id="parseBtn" class="btn primary">Analisar texto</button>
-            <button id="clearBtn" class="btn ghost">Limpar</button>
+          <div id="manualInputGroup" class="hidden">
+            <div class="control-group">
+              <label for="inputText">Cole a tabela aqui</label>
+              <textarea id="inputText" rows="14" style="width:100%;min-height:220px" placeholder="Cole o conteúdo copiado do Word..."></textarea>
+            </div>
+            <div class="control-row">
+              <button id="parseBtn" class="btn primary">Extrair Itens</button>
+              <button id="clearBtn" class="btn ghost">Limpar</button>
+            </div>
+          </div>
+          <div id="editalInputGroup">
+            <div class="control-group">
+              <label>Edital do leilão</label>
+              <div class="upload-area" id="editalDropZone" onclick="document.getElementById('editalFileInput').click()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+                </svg>
+                <p><strong>Clique para selecionar</strong> ou arraste o arquivo aqui</p>
+                <p style="margin-top:4px;font-size:.8rem">PDF ou Word (.docx)</p>
+              </div>
+              <input type="file" id="editalFileInput" accept=".pdf,.doc,.docx" style="display:none" />
+              <div id="editalFileInfo" class="edital-file-info hidden">
+                <div style="flex:1">
+                  <div class="edital-file-name" id="editalFileName">—</div>
+                  <div class="edital-file-meta" id="editalFileMeta">—</div>
+                </div>
+                <button class="btn ghost" id="editalClearFile" style="padding:5px 10px;font-size:13px;line-height:1" onclick="event.stopPropagation()">×</button>
+              </div>
+            </div>
+            <div class="control-row">
+              <button id="extractBtn" class="btn primary" disabled>Extrair Itens</button>
+              <button id="clearBtnEdital" class="btn ghost">Limpar</button>
+            </div>
           </div>
           <div id="parseInfo" class="hint"></div>
         </div>

@@ -71,3 +71,11 @@ textarea{resize:vertical}
 .model-wellington .background{background-image:url("./modelo_placas/wellington.png"),url("./modelo_placas/wellington.jpg")}
 .model-patricia .background{background-image:url("./modelo_placas/patricia.png"),url("./modelo_placas/patricia.jpg")}
 .fallback .background{opacity:.22;background:radial-gradient(200px 120px at 20% 30%,#BC110C33 0%,transparent 60%),linear-gradient(#111,#000)}
+.upload-area{border:2px dashed var(--border);border-radius:12px;padding:28px 20px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;background:#0b0b0b}
+.upload-area:hover,.upload-area.drag{border-color:var(--accent);background:#0f0000}
+.upload-area svg{width:36px;height:36px;color:var(--accent);margin:0 auto 10px;display:block}
+.upload-area p{color:var(--muted);font-size:.9rem}
+.upload-area strong{color:var(--text)}
+.edital-file-info{display:flex;align-items:center;gap:10px;margin-top:8px;background:#0b0b0b;border:1px solid var(--border);border-radius:10px;padding:10px 14px}
+.edital-file-name{color:var(--text);font-weight:600;font-size:.88rem}
+.edital-file-meta{color:var(--muted);font-size:.78rem;margin-top:2px}

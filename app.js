@@ -4,6 +4,7 @@ const $$ = (q) => [...document.querySelectorAll(q)];
 const state = {
   user: null,
   items: [],
+  editalFile: null,
   cardsRendered: false,
   generationTimer: null,
   downloadCtrl: null,
@@ -317,8 +318,11 @@ function clearSession() {
 }
 
 function bootSession() {
-  const u = localStorage.getItem('session-user');
-  if (u) setSession(u);
+  // AUTH DESABILITADA TEMPORARIAMENTE — acesso direto ao workspace
+  setSession('dev@local');
+  return;
+  // const u = localStorage.getItem('session-user');
+  // if (u) setSession(u);
 }
 
 function bindAuth() {
@@ -379,6 +383,14 @@ function bindAuth() {
   });
 }
 
+function normalizeExtractedItems(apiItems) {
+  return apiItems.map(it => ({
+    item: it.item,
+    valor: it.avaliacao,
+    descricao: it.descricao || '—',
+  }));
+}
+
 function parseTextTable(raw) {
   const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const items = [];
@@ -413,7 +425,7 @@ function renderTablePreview(items) {
     row.className = 'table-row';
     row.innerHTML = `
       <div class="table-cell">${it.item}</div>
-      <div class="table-cell">—</div>
+      <div class="table-cell">${it.descricao || '—'}</div>
       <div class="table-cell">${it.valor}</div>
     `;
     container.appendChild(row);
@@ -715,52 +727,175 @@ async function downloadAllPdfZip() {
   }
 }
 
+function clearWorkspace(fileInput, extractBtn) {
+  state.editalFile = null;
+  const inputText = $('#inputText');
+  if (inputText) inputText.value = '';
+  if (fileInput) fileInput.value = '';
+  hide($('#editalFileInfo'));
+  if (extractBtn) extractBtn.disabled = true;
+  $('#tablePreview').innerHTML = '';
+  $('#cardsGrid').innerHTML = '';
+  const hint = $('#parseInfo');
+  hint.textContent = '';
+  hint.classList.remove('error');
+  $('#generateBtn').disabled = true;
+  $('#downloadAllDocxBtn').disabled = true;
+  $('#downloadAllPdfBtn').disabled = true;
+  hide($('#downloadAllDocxBtn'));
+  hide($('#downloadAllPdfBtn'));
+  state.items = [];
+  hide($('#resultArea'));
+  const banner = $('#generationStatus');
+  const bannerText = $('#generationStatusText');
+  if (bannerText) bannerText.textContent = '';
+  if (banner) hide(banner);
+  if (state.generationTimer) { clearTimeout(state.generationTimer); state.generationTimer = null; }
+}
+
 function bindWorkspace() {
-  $('#parseBtn').addEventListener('click', () => {
-    const raw = $('#textoInput').value;
-    const items = parseTextTable(raw);
-    state.items = items;
-    const hint = $('#parseInfo');
-    hint.classList.remove('error');
-    hint.textContent = items.length
-      ? `Foram identificados ${items.length} item(ns).`
-      : 'Nenhum item identificado. Confira o texto.';
-    renderTablePreview(items);
-    $('#generateBtn').disabled = items.length === 0;
-    $('#downloadAllDocxBtn').disabled = true;
-    $('#downloadAllPdfBtn').disabled = true;
-    hide($('#downloadAllDocxBtn'));
-    hide($('#downloadAllPdfBtn'));
-    $('#cardsGrid').innerHTML = '';
-    const resultArea = $('#resultArea');
-    if (items.length > 0) show(resultArea); else hide(resultArea);
-    const banner = $('#generationStatus');
-    const bannerText = $('#generationStatusText');
-    bannerText.textContent = '';
-    hide(banner);
-    if (state.generationTimer) { clearTimeout(state.generationTimer); state.generationTimer = null; }
+  // Alternância de modo de entrada
+  $$('#inputModeTabs .tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      $$('#inputModeTabs .tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      if (tab.dataset.mode === 'manual') {
+        show($('#manualInputGroup'));
+        hide($('#editalInputGroup'));
+      } else {
+        hide($('#manualInputGroup'));
+        show($('#editalInputGroup'));
+      }
+      const hint = $('#parseInfo');
+      hint.textContent = '';
+      hint.classList.remove('error');
+    });
   });
 
-  $('#clearBtn').addEventListener('click', () => {
-    $('#textoInput').value = '';
-    $('#tablePreview').innerHTML = '';
-    $('#cardsGrid').innerHTML = '';
+  // Botão Analisar (modo manual)
+  const parseBtn = $('#parseBtn');
+  if (parseBtn) {
+    parseBtn.addEventListener('click', () => {
+      const inputText = $('#inputText');
+      const raw = inputText ? inputText.value : '';
+      const hint = $('#parseInfo');
+      if (!raw.trim()) {
+        hint.classList.add('error');
+        hint.textContent = 'Cole o conteúdo da tabela antes de analisar.';
+        return;
+      }
+      const items = parseTextTable(raw);
+      if (items.length === 0) {
+        hint.classList.add('error');
+        hint.textContent = 'Nenhum item encontrado. Verifique o formato da tabela.';
+        hide($('#resultArea'));
+        return;
+      }
+      state.items = items;
+      hint.classList.remove('error');
+      hint.textContent = `Foram identificados ${items.length} item(ns).`;
+      renderTablePreview(items);
+      $('#generateBtn').disabled = false;
+      $('#downloadAllDocxBtn').disabled = true;
+      $('#downloadAllPdfBtn').disabled = true;
+      hide($('#downloadAllDocxBtn'));
+      hide($('#downloadAllPdfBtn'));
+      $('#cardsGrid').innerHTML = '';
+      show($('#resultArea'));
+    });
+  }
+
+  const dropZone = $('#editalDropZone');
+  const fileInput = $('#editalFileInput');
+  const extractBtn = $('#extractBtn');
+
+  function setEditalFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['pdf', 'doc', 'docx'].includes(ext)) {
+      const hint = $('#parseInfo');
+      hint.classList.add('error');
+      hint.textContent = 'Formato inválido. Use PDF ou Word (.docx).';
+      return;
+    }
+    state.editalFile = file;
+    $('#editalFileName').textContent = file.name;
+    $('#editalFileMeta').textContent = ext.toUpperCase() + ' • ' + (file.size / 1024).toFixed(1) + ' KB';
+    show($('#editalFileInfo'));
+    if (extractBtn) extractBtn.disabled = false;
     const hint = $('#parseInfo');
     hint.textContent = '';
     hint.classList.remove('error');
-    $('#generateBtn').disabled = true;
-    $('#downloadAllDocxBtn').disabled = true;
-    $('#downloadAllPdfBtn').disabled = true;
-    hide($('#downloadAllDocxBtn'));
-    hide($('#downloadAllPdfBtn'));
-    state.items = [];
-    hide($('#resultArea'));
+  }
+
+  if (dropZone) {
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag');
+      const f = e.dataTransfer.files[0];
+      if (f) setEditalFile(f);
+    });
+  }
+  if (fileInput) fileInput.addEventListener('change', e => { if (e.target.files[0]) setEditalFile(e.target.files[0]); });
+
+  const clearFileBtn = $('#editalClearFile');
+  if (clearFileBtn) {
+    clearFileBtn.addEventListener('click', () => {
+      state.editalFile = null;
+      if (fileInput) fileInput.value = '';
+      hide($('#editalFileInfo'));
+      if (extractBtn) extractBtn.disabled = true;
+    });
+  }
+
+  if (extractBtn) extractBtn.addEventListener('click', async () => {
+    if (!state.editalFile) return;
+    extractBtn.disabled = true;
+    extractBtn.textContent = 'Extraindo…';
+    const hint = $('#parseInfo');
+    hint.classList.remove('error');
+    hint.textContent = 'Analisando edital com IA…';
     const banner = $('#generationStatus');
     const bannerText = $('#generationStatusText');
-    bannerText.textContent = '';
-    hide(banner);
+    if (bannerText) bannerText.textContent = '';
+    if (banner) hide(banner);
     if (state.generationTimer) { clearTimeout(state.generationTimer); state.generationTimer = null; }
+
+    try {
+      const formData = new FormData();
+      formData.append('file', state.editalFile);
+      const resp = await fetch('/api/extract-edital', { method: 'POST', body: formData });
+      let data;
+      try { data = await resp.json(); } catch {
+        throw new Error(`Servidor retornou resposta inválida (status ${resp.status}). Reinicie o servidor e rode npm install na pasta api.`);
+      }
+      if (!resp.ok) throw new Error(data.error || 'Erro ao extrair itens');
+      if (!data.items || data.items.length === 0) throw new Error('Nenhum item encontrado no edital.');
+      const items = normalizeExtractedItems(data.items);
+      state.items = items;
+      hint.textContent = `Foram identificados ${items.length} item(ns).`;
+      renderTablePreview(items);
+      $('#generateBtn').disabled = false;
+      $('#downloadAllDocxBtn').disabled = true;
+      $('#downloadAllPdfBtn').disabled = true;
+      hide($('#downloadAllDocxBtn'));
+      hide($('#downloadAllPdfBtn'));
+      $('#cardsGrid').innerHTML = '';
+      show($('#resultArea'));
+    } catch (err) {
+      hint.classList.add('error');
+      hint.textContent = 'Erro: ' + (err.message || 'Falha ao extrair itens.');
+      hide($('#resultArea'));
+    }
+
+    extractBtn.disabled = false;
+    extractBtn.textContent = 'Extrair Itens';
   });
+
+  $('#clearBtn').addEventListener('click', () => clearWorkspace(fileInput, extractBtn));
+  const clearBtnEdital = $('#clearBtnEdital');
+  if (clearBtnEdital) clearBtnEdital.addEventListener('click', () => clearWorkspace(fileInput, extractBtn));
 
   $('#generateBtn').addEventListener('click', () => {
     const model = $('#modeloSelect').value;
@@ -821,8 +956,9 @@ function boot() {
   bootSession();
   const sel = $('#modeloSelect');
   if (sel) sel.value = '';
-  const items = state.items || [];
-  $('#generateBtn').disabled = items.length === 0;
+  $('#generateBtn').disabled = true;
+  const extractBtn = $('#extractBtn');
+  if (extractBtn) extractBtn.disabled = true;
   hide($('#downloadAllDocxBtn'));
   hide($('#downloadAllPdfBtn'));
   const banner = $('#generationStatus');

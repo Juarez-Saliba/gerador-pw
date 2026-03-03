@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
@@ -12,12 +13,18 @@ import fetch from 'node-fetch';
 import FormData from 'form-data';
 import pg from 'pg';
 import { spawnSync } from 'child_process';
+import multer from 'multer';
+import mammoth from 'mammoth';
+import pdfParse from 'pdf-parse';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 const DB_PATH = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(__dirname, 'users.db');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PG_URL = process.env.DATABASE_URL || '';
@@ -432,6 +439,73 @@ app.post('/api/reset-password', async (req, res) => {
     return res.status(500).json({ error: 'Erro ao resetar senha' });
   }
 });
+app.post('/api/extract-edital', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+    if (!GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY não configurada no servidor' });
+
+    const ext = req.file.originalname.split('.').pop().toLowerCase();
+    if (!['pdf', 'doc', 'docx'].includes(ext)) {
+      return res.status(400).json({ error: 'Formato inválido. Use PDF ou Word (.docx)' });
+    }
+
+    const systemPrompt = `Você é um especialista em análise de editais de leilão público brasileiros.
+Sua tarefa é extrair TODOS os itens do edital com seus respectivos números e valores de avaliação.
+
+Retorne SOMENTE um JSON válido no formato:
+{"items":[{"item":"1","descricao":"descrição resumida do bem","avaliacao":"R$ X.XXX,XX"}]}
+
+Regras:
+- Extraia TODOS os itens sem exceção
+- O campo "item" deve ser o número do item (1, 2, 3...)
+- O campo "descricao" deve ser uma descrição concisa do bem (máximo 120 caracteres)
+- O campo "avaliacao" deve ser o valor de avaliação/lance inicial no formato brasileiro (R$ X.XXX,XX)
+- Procure pelos valores na coluna AVALIAÇÃO, AVALIAÇAO, AVALIACAO ou LANCE INICIAL
+- Não inclua texto extra, apenas o JSON`;
+
+    let editalText;
+
+    if (ext === 'pdf') {
+      const pdfData = await pdfParse(req.file.buffer);
+      editalText = pdfData.text.substring(0, 80000);
+    } else {
+      const result = await mammoth.extractRawText({ buffer: req.file.buffer });
+      editalText = result.value.substring(0, 80000);
+    }
+
+    const apiResp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: 4000,
+        temperature: 0.1,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Extraia todos os itens deste edital de leilão com seus valores de avaliação. Retorne apenas o JSON.\n\nCONTEÚDO DO EDITAL:\n${editalText}` }
+        ],
+      }),
+    });
+
+    if (!apiResp.ok) {
+      const errText = await apiResp.text().catch(() => '');
+      throw new Error(`Erro na API Groq (${apiResp.status}): ${errText.slice(0, 200)}`);
+    }
+
+    const apiData = await apiResp.json();
+    const raw = (apiData.choices?.[0]?.message?.content || '').trim().replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(raw);
+    const items = parsed.items || parsed;
+
+    return res.json({ ok: true, items });
+  } catch (e) {
+    return res.status(500).json({ error: e.message || 'Falha ao extrair itens do edital' });
+  }
+});
+
 // Serve frontend estático do diretório raiz do projeto
 app.use(express.static(ROOT_DIR, { extensions: ['html'] }));
 app.get('*', (req, res) => {
