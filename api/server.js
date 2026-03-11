@@ -465,12 +465,13 @@ Regras:
 
     let editalText;
 
+    const MAX_CHARS = 24000; // ~6000 tokens, seguro para limite de 12k TPM do Groq
     if (ext === 'pdf') {
       const pdfData = await pdfParse(req.file.buffer);
-      editalText = pdfData.text.substring(0, 80000);
+      editalText = pdfData.text.substring(0, MAX_CHARS);
     } else {
       const result = await mammoth.extractRawText({ buffer: req.file.buffer });
-      editalText = result.value.substring(0, 80000);
+      editalText = result.value.substring(0, MAX_CHARS);
     }
 
     const apiResp = await fetch('https://api.groq.com/openai/v1/chat/completions', {

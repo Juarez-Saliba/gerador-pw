@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Extrator de Edital • PW Leilões</title>
+  <link rel="icon" type="image/png" href="./logo/logo_one.png" />
+  <link rel="shortcut icon" type="image/png" href="./logo/logo_one.png" />
+  <link rel="apple-touch-icon" href="./logo/logo_one.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    .ext-panel { max-width: 900px; margin: 32px auto; padding: 20px; }
+    .upload-area {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 44px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      background: var(--panel);
+      margin-bottom: 20px;
+    }
+    .upload-area:hover, .upload-area.drag {
+      border-color: var(--accent);
+      background: #0f0000;
+    }
+    .upload-area svg { width: 48px; height: 48px; color: var(--accent); margin-bottom: 14px; display: block; margin-left: auto; margin-right: auto; }
+    .upload-area p { color: var(--muted); font-size: .9rem; }
+    .upload-area strong { color: var(--text); }
+    .file-info {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      display: none;
+    }
+    .file-info.show { display: flex; }
+    .file-name { color: var(--text); font-weight: 600; font-size: .88rem; }
+    .file-meta { color: var(--muted); font-size: .78rem; margin-top: 2px; }
+    .ext-status {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      font-size: .85rem;
+      color: var(--muted);
+      display: none;
+      align-items: center;
+      gap: 10px;
+    }
+    .ext-status.show { display: flex; }
+    .ext-status.error { border-color: var(--accent); color: var(--accent); }
+    .ext-status.success { border-color: #2a4a2a; color: #6fcf6f; }
+    .spinner {
+      display: inline-block;
+      flex-shrink: 0;
+      width: 16px; height: 16px;
+      border: 2px solid var(--accent);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: ext-spin .8s linear infinite;
+    }
+    @keyframes ext-spin { to { transform: rotate(360deg); } }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .sum-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 16px;
+      text-align: center;
+    }
+    .sum-card .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+    .sum-card .value { font-size: 1.1rem; font-weight: 800; color: var(--accent); }
+    .table-wrap {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .table-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .table-top h3 { font-size: .95rem; font-weight: 600; color: var(--text); margin: 0; }
+    .table-top-actions { display: flex; gap: 8px; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      background: #070707;
+      padding: 11px 16px;
+      text-align: left;
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    td { padding: 11px 16px; border-bottom: 1px solid #111; font-size: .88rem; color: #e0e0e0; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #0f0f0f; }
+    .td-item { color: var(--accent); font-weight: 700; font-size: .95rem; white-space: nowrap; }
+    .td-valor { color: #6fcf6f; font-weight: 600; white-space: nowrap; }
+    .results-section { display: none; }
+    .results-section.show { display: block; }
+    @media(max-width:600px) {
+      .summary { grid-template-columns: 1fr 1fr; }
+      th:nth-child(2), td:nth-child(2) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo-wrap">
+        <img id="pwLogo" class="logo-img hidden" alt="PW Leilões" />
+        <div class="logo">PW</div>
+      </div>
+      <div class="brand-text">
+        <span>Extrator de Edital de Leilão</span>
+      </div>
+    </div>
+    <div class="user-actions">
+      <a href="./index.html" class="btn ghost" style="text-decoration:none">← Gerador</a>
+    </div>
+  </header>
+
+  <div class="ext-panel">
+    <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+      </svg>
+      <p><strong>Clique para selecionar</strong> ou arraste o arquivo aqui</p>
+      <p style="margin-top:6px;font-size:.8rem">PDF ou Word (.docx) — Editais de leilão público</p>
+    </div>
+    <input type="file" id="fileInput" accept=".pdf,.doc,.docx" style="display:none" />
+
+    <div class="file-info" id="fileInfo">
+      <div>
+        <div class="file-name" id="fileName">—</div>
+        <div class="file-meta" id="fileMeta">—</div>
+      </div>
+      <button class="btn primary" id="extractBtn">Extrair Itens</button>
+    </div>
+
+    <div class="ext-status" id="extStatus">
+      <span class="spinner" id="extSpinner"></span>
+      <span id="extStatusText"></span>
+    </div>
+
+    <div class="results-section" id="results">
+      <div class="summary">
+        <div class="sum-card"><div class="label">Total de Itens</div><div class="value" id="totalItems">—</div></div>
+        <div class="sum-card"><div class="label">Maior Avaliação</div><div class="value" id="maxVal">—</div></div>
+        <div class="sum-card"><div class="label">Valor Total</div><div class="value" id="totalVal">—</div></div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-top">
+          <h3>Itens do Edital</h3>
+          <div class="table-top-actions">
+            <button class="btn ghost" id="copyBtn">Copiar</button>
+            <button class="btn ghost" id="csvBtn">Exportar CSV</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Item</th><th>Descrição</th><th>Avaliação</th></tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentFile = null;
+    let currentItems = [];
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const extractBtn = document.getElementById('extractBtn');
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag');
+      const f = e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    });
+    fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+    extractBtn.addEventListener('click', extract);
+    document.getElementById('copyBtn').addEventListener('click', copyTable);
+    document.getElementById('csvBtn').addEventListener('click', exportCSV);
+
+    function handleFile(file) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!['pdf', 'doc', 'docx'].includes(ext)) {
+        showStatus('Formato inválido. Use PDF ou Word (.docx)', 'error');
+        return;
+      }
+      currentFile = file;
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('fileMeta').textContent = ext.toUpperCase() + ' • ' + (file.size / 1024).toFixed(1) + ' KB';
+      document.getElementById('fileInfo').classList.add('show');
+      document.getElementById('results').classList.remove('show');
+      document.getElementById('extStatus').classList.remove('show');
+    }
+
+    function showStatus(msg, type) {
+      const s = document.getElementById('extStatus');
+      const spinner = document.getElementById('extSpinner');
+      const textEl = document.getElementById('extStatusText');
+      textEl.textContent = msg;
+      spinner.style.display = (!type || type === 'info') ? 'inline-block' : 'none';
+      s.className = 'ext-status show' + (type && type !== 'info' ? ' ' + type : '');
+    }
+
+    function hideStatus() {
+      document.getElementById('extStatus').classList.remove('show');
+    }
+
+    async function extract() {
+      if (!currentFile) return;
+      extractBtn.disabled = true;
+      extractBtn.textContent = 'Processando...';
+      showStatus('Enviando arquivo para análise com IA…');
+      document.getElementById('results').classList.remove('show');
+
+      try {
+        const formData = new FormData();
+        formData.append('file', currentFile);
+
+        const resp = await fetch('/api/extract-edital', { method: 'POST', body: formData });
+        const data = await resp.json();
+
+        if (!resp.ok) throw new Error(data.error || 'Erro ao extrair itens');
+        if (!data.items || data.items.length === 0) throw new Error('Nenhum item encontrado no edital.');
+
+        currentItems = data.items;
+        renderResults(data.items);
+        showStatus(data.items.length + ' itens extraídos com sucesso!', 'success');
+      } catch (e) {
+        showStatus('Erro: ' + e.message, 'error');
+      }
+
+      extractBtn.disabled = false;
+      extractBtn.textContent = 'Extrair Itens';
+    }
+
+    function fmtVal(v) {
+      if (!v) return 0;
+      const n = parseFloat(String(v).replace(/[^\d,]/g, '').replace(',', '.'));
+      return isNaN(n) ? 0 : n;
+    }
+
+    function renderResults(items) {
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = '';
+      items.forEach((it, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="td-item">${it.item}</td><td>${it.descricao || '—'}</td><td class="td-valor">${it.avaliacao}</td>`;
+        tr.style.opacity = '0';
+        tr.style.transition = `opacity .3s ${i * 25}ms`;
+        tbody.appendChild(tr);
+        setTimeout(() => (tr.style.opacity = '1'), 20);
+      });
+
+      const vals = items.map(it => fmtVal(it.avaliacao));
+      const total = vals.reduce((a, b) => a + b, 0);
+      const max = vals.length ? Math.max(...vals) : 0;
+      document.getElementById('totalItems').textContent = items.length;
+      document.getElementById('maxVal').textContent = 'R$ ' + max.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+      document.getElementById('totalVal').textContent = 'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+      document.getElementById('results').classList.add('show');
+    }
+
+    function copyTable() {
+      const rows = [['Item', 'Descrição', 'Avaliação'], ...currentItems.map(it => [it.item, it.descricao, it.avaliacao])];
+      const txt = rows.map(r => r.join('\t')).join('\n');
+      navigator.clipboard.writeText(txt).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.textContent = 'Copiado!';
+        setTimeout(() => (btn.textContent = 'Copiar'), 2000);
+      });
+    }
+
+    function exportCSV() {
+      const rows = [['Item', 'Descrição', 'Avaliação'], ...currentItems.map(it => [it.item, `"${it.descricao}"`, it.avaliacao])];
+      const csv = '\uFEFF' + rows.map(r => r.join(';')).join('\n');
+      const a = document.createElement('a');
+      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+      a.download = 'itens_edital.csv';
+      a.click();
+    }
+
+    // Logo loader (igual ao index)
+    (async () => {
+      const el = document.getElementById('pwLogo');
+      if (!el) return;
+      const candidates = ['logo/logo_two.png','LOGO/logo_two.png','logo/pw.png','logo/pw.jpg','logo/pw.svg','logo/logo.png'];
+      for (const u of candidates) {
+        try {
+          const r = await fetch(u, { cache: 'no-store' });
+          if (r.ok) {
+            el.src = u;
+            el.classList.remove('hidden');
+            const fb = document.querySelector('.logo');
+            if (fb) fb.classList.add('hidden');
+            break;
+          }
+        } catch {}
+      }
+    })();
+  </script>
+</body>
+</html>
